@@ -74,6 +74,22 @@ Rule graph:
     * This information can help prioritize primers that target core genes that are most unique to the target clade
 
 
+# Install
+
+## Snakemake
+
+The pipeline utilizes [snakemake](https://snakemake.readthedocs.io/en/stable/).
+We recommend that you install it via [conda](https://docs.conda.io/en/latest/miniconda.html).
+
+## Pipeline
+
+```
+git clone --recurse-submodules git@github.com:leylabmpi/CoreGenomePrimers.git
+```
+
+That's it! Snakemake will install all dependencies!
+
+
 # Instructions
 
 For general instuctions on using snakemake, see the [snakemake docs](https://snakemake.readthedocs.io/en/stable/).
