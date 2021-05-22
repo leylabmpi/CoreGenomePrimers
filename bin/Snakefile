@@ -1,0 +1,20 @@
+#-- pipeline output files --#
+def which_rules(wildcards):        
+    F = []
+    # cgp (core gene primers)
+    ## main info
+    F.append(cgp_dir + 'primers_final_info.tsv')
+    F.append(cgp_dir + 'core_clusters_info.tsv')
+    ## non-target
+    ### cds
+    if not skipped(config['params']['cgp']['blast_nontarget']['cds']):
+        F.append(cgp_dir + 'nontarget/cds_blastx.tsv')
+    ### rRNA
+    if not skipped(config['params']['cgp']['blast_nontarget']['rRNA']):
+        F.append(cgp_dir + 'nontarget/rrna_blastn.tsv')
+    ## amplicon
+    if not skipped(config['params']['cgp']['seqkit_amplicon']):
+        F.append(cgp_dir + 'amplicons.tsv')
+    # ret
+    return F
+

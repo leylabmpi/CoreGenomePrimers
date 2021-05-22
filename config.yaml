@@ -1,0 +1,61 @@
+#-- I/O --#
+samples_file: tests/data/Pectobacterium.tsv
+
+# output location
+output_dir: tests/output_pecto/
+
+# temporary file directory (your username will be added automatically)
+tmp_dir: /ebio/abt3_scratch/
+
+#-- software parameters --#
+# See the README for a description
+params:
+  ionice: -c 3
+  cgp:
+    prokka: ""
+    mmseqs:
+      method: cluster    # or linclust (faster)
+      run: --min-seq-id 0.9 -c 0.8
+    vsearch: --id 0.94
+    core_genes:
+      cds: --perc-genomes-cds 100 --copies-per-genome-cds 1 --max-clusters-cds 10 #500
+      rRNA: --perc-genomes-rrna 100 --copies-per-genome-rrna 10 --max-clusters-rrna 500
+    align:
+      method: linsi
+      params: --auto --maxiterate 1000
+    primer3:
+      consensus: --consensus-threshold 0.34
+      number: --num-raw-primers 1000 --num-final-primers 10
+      size: --opt-size 20 --min-size 18 --max-size 26
+      product: --opt-prod-size 150 --min-prod-size 100 --max-prod-size 250
+      Tm: --opt-tm 62 --min-tm 54 --max-tm 70 --max-tm-diff 2.5
+      PCR: --oligo-DNA 50 --salt-monovalent 50 --salt-divalent 1.5 --dNTPs 0.2
+      GC: --opt-gc 50 --min-gc 25 --max-gc 75
+      degeneracy: --max-degeneracy 128 --max-degeneracy-3prime 6 --window-3prime 5
+      internal_oligo: --make-oligo 0 --int-opt-size 20 --int-opt-tm 60
+    blast_nontarget:
+      run_locally: False
+      cds: -evalue 1e-5 -max_target_seqs 30
+      rRNA: -evalue 1e-5 -max_target_seqs 30
+    blastn: -max_target_seqs 500 -perc_identity 90
+    blast_filter: --perc-len 80 --min-amplicon-len 30 --max-amplicon-len 2000
+    seqkit_amplicon: ""
+
+#-- database --#
+databases:
+  blast:
+    nucl: /ebio/abt3_projects/databases_no-backup/NCBI_blastdb/nt
+    prot: /ebio/abt3_projects/databases_no-backup/NCBI_blastdb/nr
+    rRNA:
+      SSU: /ebio/abt3_projects/databases_no-backup/NCBI_rRNA/2021-01/SSU/16S_ribosomal_RNA
+      LSU: /ebio/abt3_projects/databases_no-backup/NCBI_rRNA/2021-01/LSU/LSU_prokaryote_rRNA
+    gene_names: /ebio/abt3_projects/databases_no-backup/NCBI_nr_geneIDs/2021-01/nr_accession-geneNames.pkl
+  taxonomy:
+    names: /ebio/abt3_projects/databases_no-backup/NCBI_taxonomy/2020-12-23/names.dmp
+    nodes: /ebio/abt3_projects/databases_no-backup/NCBI_taxonomy/2020-12-23/nodes.dmp
+
+#-- snakemake pipeline --#
+pipeline:
+  snakemake_folder: ./
+  script_folder: bin/scripts/
+  name: LLPRIMER

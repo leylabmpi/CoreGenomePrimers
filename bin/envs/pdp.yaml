@@ -1,0 +1,18 @@
+channels:
+- conda-forge
+- bioconda
+dependencies:
+- python=3.7
+- intervaltree
+- prodigal
+- blast
+- bedtools
+- mafft
+- mummer=3.23
+- emboss
+- primer3=1.1.4
+- biopython<1.78
+- pybedtools
+- joblib
+- tqdm
+- openpyxl

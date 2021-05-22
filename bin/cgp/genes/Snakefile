@@ -1,0 +1,153 @@
+rule copy_genome:
+    """
+    copy/uncompress genome fasta
+    """
+    input: 
+        fasta = lambda wildcards: \
+	  config['samples'].loc[wildcards.sample,'Fasta']
+    output:
+        fna = temp(config['tmp_dir'] + 'genes/genomes/{sample}.fna')
+    params:
+        exe = config['pipeline']['script_folder'] + 'uncomp.py'
+    resources:
+        time = lambda wildcards, attempt: attempt ** 2 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt * 6        
+    log:
+        log_dir + 'cgp/genes/copy_genome/{sample}.log'
+    benchmark:
+        benchmark_dir + 'cgp/genes/copy_genome/{sample}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        {params.exe} {input.fasta} > {output.fna} 2> {log}
+        """
+        
+rule genes_prokka:
+    """
+    For each genome, running prokka to call genes
+    """
+    input:
+        fna = config['tmp_dir'] + 'genes/genomes/{sample}.fna'
+    output:
+        ffn = temp(config['tmp_dir'] + 'genes/prodigal/{sample}.ffn'),
+        faa = temp(config['tmp_dir'] + 'genes/prodigal/{sample}.faa'),
+        gff = temp(config['tmp_dir'] + 'genes/prodigal/{sample}.gff')
+    params:
+        params = config['params']['cgp']['prokka'],
+        domain = lambda wildcards: config['samples'].loc[wildcards.sample,'Domain']
+    conda:
+        '../../envs/prokka.yaml'
+    threads:
+        4
+    resources:
+        time = lambda wildcards, attempt: attempt ** 2 * 59,
+        n = lambda wildcards, attempt, threads: threads,
+        mem_gb_pt = lambda wildcards, attempt: attempt * 8 + 12
+    log:
+        log_dir + 'cgp/genes/prodigal/{sample}.log'
+    benchmark:
+        benchmark_dir + 'cgp/genes/prodigal/{sample}.txt'
+    shell:
+        """        
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        PREFIX=`basename "{output.ffn}" | perl -pe 's/\.ffn$//'`
+        OUTDIR=`dirname {output.ffn}`
+        prokka {params.params} \
+          --force --notrna \
+          --kingdom {params.domain} \
+          --cpus {threads} \
+          --prefix $PREFIX \
+          --outdir $OUTDIR \
+          {input.fna} 2> {log} 1>&2
+        """
+
+rule genes_metadata:
+    """
+    Creating tab-delim file of gene metadata. 
+    Also, renaming gene sequences with UUIDs
+    """
+    input:
+        ffn = config['tmp_dir'] + 'genes/prodigal/{sample}.ffn',
+        faa = config['tmp_dir'] + 'genes/prodigal/{sample}.faa',
+        gff = config['tmp_dir'] + 'genes/prodigal/{sample}.gff'
+    output:
+        ffn = temp(config['tmp_dir'] + 'genes/formatted/{sample}.ffn'),
+        fna = temp(config['tmp_dir'] + 'genes/formatted/{sample}.fna'),
+        faa = temp(config['tmp_dir'] + 'genes/formatted/{sample}.faa'),
+        tsv = temp(config['tmp_dir'] + 'genes/formatted/{sample}.tsv')
+    params:
+        exe = config['pipeline']['script_folder'] + 'gene_metadata.py',
+        sample = '{sample}'
+    log:
+        log_dir + 'cgp/genes/metadata/{sample}.log'
+    benchmark:
+        benchmark_dir + 'cgp/genes/metadata/{sample}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        python {params.exe} \
+          --rrna-fasta-out {output.ffn} \
+          --nuc-fasta-out {output.fna} \
+          --prot-fasta-out {output.faa} \
+          --metadata-out {output.tsv} \
+          {input.ffn} {input.faa} \
+          {input.gff} {params.sample} \
+          2> {log} 1>&2
+        """    
+              
+rule genes_combine_fna:
+    """
+    For all per-genome de-replicated genes of all genomes, combining into 1 collection
+    """
+    input:
+        fna = expand(config['tmp_dir'] + 'genes/formatted/{sample}.fna',
+                     sample = config['samples_unique'])
+    output:
+        fna = temp(config['tmp_dir'] + 'genes/combined.fna')
+    resources:
+        time = lambda wildcards, attempt: attempt ** 2 * 59
+    run:
+        cat_files(input.fna, outfile=output.fna) 
+
+rule genes_combine_faa:
+    """
+    For all per-genome de-replicated genes of all genomes, combining into 1 collection
+    """
+    input:
+        faa = expand(config['tmp_dir'] + 'genes/formatted/{sample}.faa',
+                     sample = config['samples_unique'])
+    output:
+        faa = temp(config['tmp_dir'] + 'genes/combined.faa')
+    resources:
+        time = lambda wildcards, attempt: attempt ** 2 * 59
+    run:
+        cat_files(input.faa, outfile=output.faa) 
+
+rule genes_combine_ffn:
+    """
+    For all per-genome de-replicated genes of all genomes, combining into 1 collection
+    """
+    input:
+        ffn = expand(config['tmp_dir'] + 'genes/formatted/{sample}.ffn',
+                     sample = config['samples_unique'])
+    output:
+        ffn = temp(config['tmp_dir'] + 'genes/combined.ffn')
+    resources:
+        time = lambda wildcards, attempt: attempt ** 2 * 59
+    run:
+        cat_files(input.ffn, outfile=output.ffn) 
+        
+rule genes_combine_tsv:
+    """
+    For all per-genome de-replicated genes of all genomes, combining into 1 collection
+    """
+    input:
+        tsv = expand(config['tmp_dir'] + 'genes/formatted/{sample}.tsv',
+                     sample = config['samples_unique'])
+    output:
+        tsv = temp(config['tmp_dir'] + 'genes/combined.tsv')
+    resources:
+        time = lambda wildcards, attempt: attempt ** 2 * 59
+    run:
+        cat_files(input.tsv, outfile=output.tsv, header=True) 
+

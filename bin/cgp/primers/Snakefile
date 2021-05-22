@@ -1,0 +1,313 @@
+rule primers_design:
+    """
+    Designing primers via primer3
+    """
+    input:
+        aln = config['tmp_dir'] + 'clusters_core/{t}/cluster_{i}.afa'
+    output:
+        degen = temp(config['tmp_dir'] + 'primers_raw/{t}/{i}/primers_degen.fna'),
+        expand = temp(config['tmp_dir'] + 'primers_raw/{t}/{i}/primers_expand.fna'),
+        tsv = temp(config['tmp_dir'] + 'primers_raw/{t}/{i}/primers.tsv')
+    params:
+        params = ' '.join([config['params']['cgp']['primer3']['consensus'],
+                           config['params']['cgp']['primer3']['number'],
+                           config['params']['cgp']['primer3']['size'],
+                           config['params']['cgp']['primer3']['product'],
+                           config['params']['cgp']['primer3']['Tm'],
+                           config['params']['cgp']['primer3']['PCR'],
+                           config['params']['cgp']['primer3']['GC'],
+                           config['params']['cgp']['primer3']['degeneracy'],
+                           config['params']['cgp']['primer3']['internal_oligo']]),
+        exe = config['pipeline']['script_folder'] + 'primer_design.py'
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 7
+    conda:
+        '../../envs/primer3.yaml'
+    log:
+        log_dir + 'cgp/primers/design/{t}/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/primers/design/{t}/{i}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        PREFIX=`echo "{output.tsv}" | perl -pe 's/\.tsv$//'`
+        {params.exe} {params.params} \
+          --prefix $PREFIX {input.aln} 2> {log} 1>&2
+        """
+        
+rule primers_blastn_crosshyb:
+    """
+    primer blast on non-target genes from target-genomes
+    """
+    input:
+        fna = config['tmp_dir'] + 'primers_raw/{t}/{i}/primers_expand.fna',
+        ndb = config['tmp_dir'] + 'clusters_core/combined_nuc_db.ndb',
+        nhr = config['tmp_dir'] + 'clusters_core/combined_nuc_db.nhr',
+        nin = config['tmp_dir'] + 'clusters_core/combined_nuc_db.nin',
+        nt = config['tmp_dir'] + 'clusters_core/combined_nuc_db.not',
+        nsq = config['tmp_dir'] + 'clusters_core/combined_nuc_db.nsq',
+        ntf = config['tmp_dir'] + 'clusters_core/combined_nuc_db.ntf',
+        nto = config['tmp_dir'] + 'clusters_core/combined_nuc_db.nto'
+    output:
+        txt = temp(config['tmp_dir'] + 'primers_crosshyb_blastn/{t}/{i}/blastn.txt')
+    params:
+        params = config['params']['cgp']['blastn']
+    conda:
+        '../../envs/blast.yaml'
+    threads:
+        4
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        n = lambda wildcards, attempt, threads: threads,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 2 + 3 
+    log:
+        log_dir + 'cgp/primers/blastn_crosshyb/{t}/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/blastn_crosshyb/{t}/{i}.txt'
+    shell:
+        """
+        DB=`echo "{input.ndb}" | perl -pe 's/\.ndb$//'`
+        OUTFMT="6 qaccver saccver pident length mismatch gapopen"
+        OUTFMT="$OUTFMT qstart qend sstart send evalue bitscore slen qlen"
+        blastn {params.params} \
+          -num_threads {threads} \
+          -task blastn-short \
+          -outfmt "$OUTFMT" \
+          -db $DB \
+          -query {input.fna} \
+          -out {output.txt} \
+          2> {log} 1>&2
+        """        
+
+rule primers_blastn_crosshyb_filter:
+    """
+    Filtering primers if they produce a valid amplicon for a non-target gene
+    """
+    input:
+        blst = config['tmp_dir'] + 'primers_crosshyb_blastn/{t}/{i}/blastn.txt',
+        clst = config['tmp_dir'] + 'clusters_core/{t}/cluster_{i}.fna',
+        fna1 = config['tmp_dir'] + 'primers_raw/{t}/{i}/primers_degen.fna',
+        fna2 = config['tmp_dir'] + 'primers_raw/{t}/{i}/primers_expand.fna',
+        info = config['tmp_dir'] + 'primers_raw/{t}/{i}/primers.tsv'
+    output:
+        fna1 = temp(config['tmp_dir'] + \
+                    'primers_crosshyb_filtered/{t}/{i}/primers_degen.fna'),
+        fna2 = temp(config['tmp_dir'] + \
+                    'primers_crosshyb_filtered/{t}/{i}/primers_expand.fna'),
+        tsv = temp(config['tmp_dir'] + \
+                   'primers_crosshyb_filtered/{t}/{i}/primers.tsv')
+    params:
+        exe = config['pipeline']['script_folder'] + 'primer_blast_filter.py',
+        params = config['params']['cgp']['blast_filter']
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 7
+    log:
+        log_dir + 'cgp/primers/blastn_crosshyb_filter/{t}/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/primers/blastn_crosshyb_filter/{t}/{i}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        PREFIX=`echo "{output.tsv}" | perl -pe 's/\.tsv$//'`
+        {params.exe} {params.params} \
+          --prefix $PREFIX \
+          --target-fasta {input.clst} \
+          --primer-info {input.info} \
+          {input.blst} {input.fna1} {input.fna2} \
+          2> {log} 1>&2
+        """
+        
+rule primers_blastn_other_taxa:
+    """
+    primer blast against non-target taxa 
+    """
+    input:
+        fna = config['tmp_dir'] + 'primers_crosshyb_filtered/{t}/{i}/primers_expand.fna',
+        taxids = taxid_dir + 'target_species-level_taxids.txt'
+    output:
+        txt = temp(config['tmp_dir'] + 'primers_nontarget_blastn/{t}/{i}/blastn.txt')
+    params:
+        params = config['params']['cgp']['blastn'],
+        db = config['databases']['blast']['nucl']
+    conda:
+        '../../envs/blast.yaml'
+    threads:
+        8
+    resources:
+        time = lambda wildcards, attempt: attempt * 60 * 24 + (60 * 36),
+        n = lambda wildcards, attempt, threads: threads,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 2 + 13
+    log:
+        log_dir + 'cgp/primers/blastn_other_taxa/{t}/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/primers/blastn_other_taxa/{t}/{i}.txt'
+    shell:
+        """
+        OUTFMT="6 qaccver saccver pident length mismatch gapopen"
+        OUTFMT="$OUTFMT qstart qend sstart send evalue bitscore slen qlen"
+        blastn {params.params} \
+          -num_threads {threads} \
+          -task blastn-short \
+          -negative_taxidlist {input.taxids} \
+          -outfmt "$OUTFMT" \
+          -db {params.db} \
+          -query {input.fna} \
+          -out {output.txt} \
+          2> {log} 1>&2
+        """        
+                
+rule primers_blastn_other_taxa_filter:
+    """
+    Filtering primer blast results & writing out final primers
+    """
+    input:
+        blst = config['tmp_dir'] + 'primers_nontarget_blastn/{t}/{i}/blastn.txt',
+        fna1 = config['tmp_dir'] + 'primers_crosshyb_filtered/{t}/{i}/primers_degen.fna',
+        fna2 = config['tmp_dir'] + 'primers_crosshyb_filtered/{t}/{i}/primers_expand.fna',
+        info = config['tmp_dir'] + 'primers_crosshyb_filtered/{t}/{i}/primers.tsv'
+    output:
+        fna1 = cgp_dir + 'primers_final/{t}/cluster_{i}/primers_degen.fna',
+        fna2 = cgp_dir + 'primers_final/{t}/cluster_{i}/primers_expand.fna',
+        tsv = cgp_dir + 'primers_final/{t}/cluster_{i}/primers.tsv'
+    params:
+        exe = config['pipeline']['script_folder'] + 'primer_blast_filter.py',
+        params = config['params']['cgp']['blast_filter']
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 7
+    log:
+        log_dir + 'cgp/primers/blastn_other_taxa_filter/{t}/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/primers/blastn_other_taxa_filter/{t}/{i}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        PREFIX=`echo "{output.tsv}" | perl -pe 's/\.tsv$//'`
+        {params.exe} {params.params} \
+          --prefix $PREFIX \
+          --primer-info {input.info} \
+          {input.blst} {input.fna1} {input.fna2} \
+          2> {log} 1>&2
+        """
+        
+def aggregate_primer_info(wildcards):
+    """
+    Aggregation function that uses clusters_core checkpoint
+    """
+    chk_out = checkpoints.clusters_core_genes.get(**wildcards).output[0]
+    F = expand(cgp_dir + 'primers_final/cds/cluster_{x}/primers.tsv',
+               x = glob_wildcards(os.path.join(chk_out, 'cds', 'cluster_{i}.fna')).i)
+    F += expand(cgp_dir + 'primers_final/rrna/cluster_{x}/primers.tsv',
+               x = glob_wildcards(os.path.join(chk_out, 'rrna', 'cluster_{i}.fna')).i)
+    msg = 'No. of primer files: {}\n'
+    sys.stderr.write(msg.format(len(F)))
+    return F
+
+localrules: primers_concat_info
+rule primers_concat_info:
+    """
+    Concatenating primer metadata
+    """
+    input:
+        tsv = aggregate_primer_info
+    output:
+        tsv = cgp_dir + 'primers_final_info.tsv'
+    run:
+        with open(output.tsv, 'w') as outF:
+            for i,F in enumerate(input.tsv):
+                gene_type = os.path.split(os.path.split(os.path.split(F)[0])[0])[1]
+                cluster_id = os.path.split(os.path.split(F)[0])[1]
+                cluster_id = cluster_id.lstrip('cluster_')
+                with open(F) as inF:
+                    for ii,line in enumerate(inF):
+                        if ii == 0:
+                            if i == 0:
+                                line = '\t'.join(['gene_type', 'cluster_id', line])
+                            else:
+                                continue
+                        else:
+                            line = '\t'.join([str(gene_type), str(cluster_id), line])
+                        outF.write(line)
+                
+rule clusters_info_copy:
+    """
+    copy/compress core cluster info
+    """
+    input:
+        fna = config['tmp_dir'] + 'clusters_core/{t}/cluster_{i}.fna',
+        aln = config['tmp_dir'] + 'clusters_core/{t}/cluster_{i}.afa',
+        tsv = config['tmp_dir'] + 'clusters_core/{t}/cluster_{i}.tsv'
+    output:
+        fna = cgp_dir + 'clusters/{t}/cluster_{i}.fna.gz',
+        aln = cgp_dir + 'clusters/{t}/cluster_{i}.afa.gz',
+        tsv = cgp_dir + 'clusters/{t}/cluster_{i}.tsv.gz'
+    params:
+        ionice = config['params']['ionice']
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 5
+    log:
+        log_dir + 'cgp/clusters/info_copy/{t}/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/info_copy/{t}/{i}.txt'
+    shell:
+        """
+        ionice {params.ionice} gzip -c {input.fna} > {output.fna} 2> {log}
+        ionice {params.ionice} gzip -c {input.aln} > {output.aln} 2>> {log}
+        ionice {params.ionice} gzip -c {input.tsv} > {output.tsv} 2>> {log}
+        """
+                        
+def aggregate_cluster_info(wildcards):
+    """
+    Selecting cluster metadata files
+    """
+    chk_out = checkpoints.clusters_core_genes.get(**wildcards).output[0]
+    F = expand(cgp_dir + 'clusters/cds/cluster_{x}.tsv.gz',
+               x = glob_wildcards(os.path.join(chk_out, 'cds', 'cluster_{i}.fna')).i)
+    F += expand(cgp_dir + 'clusters/rrna/cluster_{x}.tsv.gz',
+                x = glob_wildcards(os.path.join(chk_out, 'rrna', 'cluster_{i}.fna')).i)
+    msg = 'No. of cluster files: {}\n'
+    sys.stderr.write(msg.format(len(F)))    
+    return F
+
+localrules: clusters_concat_info
+rule clusters_concat_info:
+    """
+    Concatenating cluster info for core clusters in which viable primers exist
+    """
+    input:
+        tsv1 = aggregate_primer_info,
+        tsv2 = aggregate_cluster_info
+    output:
+        tsv = cgp_dir + 'core_clusters_info.tsv'
+    run:
+        import re, gzip
+        from pathlib import Path
+        # only including clusters if primers found
+        files = []
+        for x,y in zip(input.tsv1, input.tsv2):
+            n_lines = 0
+            with open(x) as inF:
+                if len([x for x in inF]) > 1:
+                    files.append(y)
+        # loading cluster info
+        regex = re.compile(r'cluster_([0-9]+)\.tsv.gz$')
+        with open(output.tsv, 'w') as outF:
+            for i,F in enumerate(files):
+                gene_type = os.path.split(os.path.split(F)[0])[1]
+                cluster_id = regex.search(F).groups()[0]                
+                with gzip.open(F, 'rb') as inF:                   
+                    for ii,line in enumerate(inF):                        
+                        line = line.decode('utf-8').split('\t')
+                        line = '\t'.join([str(x) for x in line[:-1]])
+                        if ii == 0:
+                            if i == 0:
+                                line = '\t'.join(['gene_type', 'cluster_id', line])
+                            else:
+                                continue
+                        else:
+                            line = '\t'.join([gene_type, str(cluster_id), line])
+                        outF.write(line + '\n')
+

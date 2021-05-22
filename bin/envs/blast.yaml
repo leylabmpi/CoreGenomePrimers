@@ -1,0 +1,8 @@
+channels:
+- bioconda
+- conda-forge
+dependencies:
+- pigz
+- bioconda::seqkit
+- bioconda::biopython<1.78
+- bioconda::blast>=2.10.1

@@ -1,0 +1,8 @@
+channels:
+- bioconda
+- conda-forge
+dependencies:
+- pigz
+- bioconda::revtrans
+- bioconda::kalign3
+- bioconda::mafft

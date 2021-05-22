@@ -1,0 +1,396 @@
+rule clusters_mmseqs_db_create:
+    """ 
+    Creating mmseqs2 database that will be used for clustering
+    """
+    input:
+        fna = config['tmp_dir'] + 'genes/combined.fna',
+        faa = config['tmp_dir'] + 'genes/combined.faa',
+        tsv = config['tmp_dir'] + 'genes/combined.tsv'
+    output:
+        db = temp(config['tmp_dir'] + 'clusters/genes_db'),
+        db_t = temp(config['tmp_dir'] + 'clusters/genes_db.dbtype'),
+        db_i = temp(config['tmp_dir'] + 'clusters/genes_db.index'),
+        db_l = temp(config['tmp_dir'] + 'clusters/genes_db.lookup'),
+        db_s = temp(config['tmp_dir'] + 'clusters/genes_db.source'),
+        db_h = temp(config['tmp_dir'] + 'clusters/genes_db_h'),
+        db_ht = temp(config['tmp_dir'] + 'clusters/genes_db_h.dbtype'),
+        db_hi = temp(config['tmp_dir'] + 'clusters/genes_db_h.index')
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 * 20 + 20
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/clusters/mmseqs_db_create/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/mmseqs_db_create/all.txt'
+    shell:
+        """
+        mmseqs createdb {input.faa} {output.db} 2> {log} 1>&2
+        """
+
+def mmseqs_cluster_mem(wildcards, input, threads, attempt):
+    """
+    Setting the memmory used for mmseqs_cluster based on the size of the
+    input mmseqs genes database.
+    """
+    db_size = os.stat(input.db).st_size / 1e9
+    mem = round(db_size * 4 / threads + 1.499,0)
+    mem = (attempt - 1) ** 2 + 1 + mem
+    return int(mem)
+    
+rule clusters_mmseqs_cluster:
+    """
+    Clustering the mmseqs gene database
+    """
+    input:
+        db = config['tmp_dir'] + 'clusters/genes_db',
+        db_t = config['tmp_dir'] + 'clusters/genes_db.dbtype',
+        db_i = config['tmp_dir'] + 'clusters/genes_db.index',
+        db_s = config['tmp_dir'] + 'clusters/genes_db.source',
+        db_h = config['tmp_dir'] + 'clusters/genes_db_h',
+        db_ht = config['tmp_dir'] + 'clusters/genes_db_h.dbtype',
+        db_hi = config['tmp_dir'] + 'clusters/genes_db_h.index'
+    output:
+        dbx = temp(config['tmp_dir'] + 'clusters/clusters_db'),
+        db = temp(expand(config['tmp_dir'] + 'clusters/clusters_db.{X}',
+                         X = range(12))),
+        db_t = temp(config['tmp_dir'] + 'clusters/clusters_db.dbtype'),
+        db_i = temp(config['tmp_dir'] + 'clusters/clusters_db.index'),
+        db_h = temp(config['tmp_dir'] + 'clusters/clusters_db_h')
+    params:
+        db = config['tmp_dir'] + 'clusters/clusters_db',
+        params = config['params']['cgp']['mmseqs']['run'],
+        cluster = config['params']['cgp']['mmseqs']['method'],
+        tmp_dir = config['tmp_dir'] + 'cluster_TMP'
+    threads:
+        12
+    resources:
+        time = lambda wildcards, attempt: attempt * 2 * 60 * 48,
+        n = lambda wildcards, input, attempt, threads: threads,
+        mem_gb_pt = mmseqs_cluster_mem
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/clusters/mmseqs_cluster/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/mmseqs_cluster/all.txt'
+    shell:
+        """
+        # removing existing output
+        rm -rf {params.tmp_dir} 2> {log} && mkdir -p {params.tmp_dir} 2>> {log}
+        rm -f {output.db_t} 2>> {log}
+        # clustering
+        mmseqs {params.cluster} {params.params} --threads {threads} \
+          {input.db} {params.db} {params.tmp_dir} 2>> {log} 1>&2
+        touch {output.dbx} {output.db_h} 2>> {log}
+        """
+        
+rule clusters_mmseqs_membership:
+    """
+    Getting a table of which genes belong to which cluster (cluster membership).
+    Output table format: cluster_rep<tab>cluster_member
+    The "cluster_rep" is the de-facto cluster_id
+    """
+    input:
+        db = config['tmp_dir'] + 'clusters/genes_db',
+        db_t = config['tmp_dir'] + 'clusters/genes_db.dbtype',
+        db_i = config['tmp_dir'] + 'clusters/genes_db.index',
+        db_h = config['tmp_dir'] + 'clusters/genes_db_h',
+        db_ht = config['tmp_dir'] + 'clusters/genes_db_h.dbtype',
+        db_hi = config['tmp_dir'] + 'clusters/genes_db_h.index',
+        db_clu = expand(config['tmp_dir'] + 'clusters/clusters_db.{X}',
+                        X = range(12)),
+        db_clu_t = config['tmp_dir'] + 'clusters/clusters_db.dbtype',
+        db_clu_i = config['tmp_dir'] + 'clusters/clusters_db.index',
+        db_clu_h = config['tmp_dir'] + 'clusters/clusters_db_h'
+    output:
+        tsv = temp(config['tmp_dir'] + 'clusters/clusters_membership.tsv')
+    params:
+        db_clu = config['tmp_dir'] + 'clusters/clusters_db'
+    threads:
+        4
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        n = lambda wildcards, attempt, threads: threads,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 5
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/clusters/mmseqs_membership/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/mmseqs_membership/all.txt'
+    shell:
+        """
+        mmseqs createtsv --threads {threads} {input.db} {input.db} \
+          {params.db_clu} {output.tsv} 2> {log} 1>&2
+        """
+
+rule clusters_rrna_vsearch:
+    """ 
+    vsearch-based clustering for all rrna genes
+    """
+    input:
+        ffn = config['tmp_dir'] + 'genes/combined.ffn'
+    output:
+        fna = temp(config['tmp_dir'] + 'clusters_rrna/combined_reps.fna'),
+        uc = temp(config['tmp_dir'] + 'clusters_rrna/combined.uc')
+    params:
+        params = config['params']['cgp']['vsearch']         
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 2 * 10 
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/clusters_rrna/vsearch/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters_rrna/vsearch/all.txt'
+    shell:
+        """
+        vsearch {params.params} \
+          --threads {threads} --strand both \
+          --qmask none --fasta_width 0 \
+          --cluster_fast {input.ffn} \
+          --centroids {output.fna} \
+          --uc {output.uc} \
+          2> {log} 1>&2
+        """
+        
+checkpoint clusters_core_genes:
+    """
+    Determining which gene clusters are core (& single copy)
+    """
+    input:
+        mem = config['tmp_dir'] + 'clusters/clusters_membership.tsv',
+        meta = config['tmp_dir'] + 'genes/combined.tsv',
+        fna = config['tmp_dir'] + 'genes/combined.fna',
+        faa = config['tmp_dir'] + 'genes/combined.faa',
+        ffn = config['tmp_dir'] + 'genes/combined.ffn',
+        uc = config['tmp_dir'] + 'clusters_rrna/combined.uc'
+    output:
+        d = directory(config['tmp_dir'] + 'clusters_core/'),
+        fna = temp(config['tmp_dir'] + 'clusters_core/clusters_TMP.fna'),
+        tsv = temp(config['tmp_dir'] + 'clusters_core/clusters.tsv')
+    params:        
+        exe = config['pipeline']['script_folder'] + 'clusters_core.py',
+        cds = config['params']['cgp']['core_genes']['cds'],
+        rrna = config['params']['cgp']['core_genes']['rRNA']
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 15
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/clusters/core_genes/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/core_genes/all.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        cat {input.fna} {input.ffn} > {output.fna} 2> {log}
+        OUTDIR=`dirname {output.tsv}`
+        python {params.exe} {params.cds} \
+          {params.rrna} --outdir $OUTDIR \
+          {input.mem} {input.uc} {input.meta} \
+          {output.fna} {input.faa} \
+          > {output.tsv} 2>> {log}
+        """
+
+def aln_num_threads(wildcards, attempt, threads, to_return='threads'):
+    """
+    Determining the number of threads to use for the sequence alignment
+    """
+    if config['params']['cgp']['align']['method'] == 'linsi':
+        if to_return == 'threads':
+            return threads
+        elif to_return == 'threads_str':
+            return '--thread {}'.format(threads)
+    else:
+        if to_return == 'threads':
+            return 1
+        elif to_return == 'threads_str':
+            return '--thread 1'
+
+rule clusters_align_rrna:
+    """
+    Create amino acid MSA for gene cluster sequences
+    """
+    input:
+        fasta = config['tmp_dir'] + 'clusters_core/rrna/cluster_{i}.fna'
+    output:
+        aln = config['tmp_dir'] + 'clusters_core/rrna/cluster_{i}.afa'
+    params:
+        method = config['params']['cgp']['align']['method'],
+        params = config['params']['cgp']['align']['params']
+    threads:
+        4
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        n = lambda wildcards, attempt, threads: \
+            aln_num_threads(wildcards, attempt, threads, to_return='threads'),
+        n_str = lambda wildcards, attempt, threads: \
+            aln_num_threads(wildcards, attempt, threads, to_return='threads_str'),
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 3
+    conda:
+        '../../envs/aln.yaml'
+    log:
+        log_dir + 'cgp/clusters/align/rrna/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/align/rrna/{i}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        {params.method} {resources.n_str} {params.params} \
+          {input.fasta} > {output.aln} 2> {log}
+        """
+        
+rule clusters_align_cds:
+    """
+    Create amino acid MSA for gene cluster sequences
+    """
+    input:
+        fasta = config['tmp_dir'] + 'clusters_core/cds/cluster_{i}.faa'
+    output:
+        aln = config['tmp_dir'] + 'clusters_core/cds/cluster_{i}.aa.afa'
+    params:
+        method = config['params']['cgp']['align']['method'],
+        params = config['params']['cgp']['align']['params']
+    threads:
+        4
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        n = lambda wildcards, attempt, threads: \
+            aln_num_threads(wildcards, attempt, threads, to_return='threads'),
+        n_str = lambda wildcards, attempt, threads: \
+            aln_num_threads(wildcards, attempt, threads, to_return='threads_str'),
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 3
+    conda:
+        '../../envs/aln.yaml'
+    log:
+        log_dir + 'cgp/clusters/align/cds/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/align/cds/{i}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        {params.method} {resources.n_str} {params.params} \
+          {input.fasta} > {output.aln} 2> {log}
+        """
+
+rule clusters_align_cds_revtrans:
+    """
+    revtrans clusters
+    """
+    input:
+        fna = config['tmp_dir'] + 'clusters_core/cds/cluster_{i}.fna', 
+        aln = config['tmp_dir'] + 'clusters_core/cds/cluster_{i}.aa.afa'
+    output:
+        aln = config['tmp_dir'] + 'clusters_core/cds/cluster_{i}.afa'
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 + 7
+    conda:
+        '../../envs/aln.yaml'
+    log:
+        log_dir + 'cgp/clusters/revtrans/cds/{i}.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/revtrans/cds/{i}.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        revtrans.py -match name {input.fna} {input.aln} \
+          > {output.aln} 2> {log}
+        """
+        
+rule clusters_mmseqs_reps:
+    """
+    Creating a representative sequence database for all gene clusters
+    """
+    input:
+        db = config['tmp_dir'] + 'clusters/genes_db',
+        db_t = config['tmp_dir'] + 'clusters/genes_db.dbtype',
+        db_i = config['tmp_dir'] + 'clusters/genes_db.index',
+        db_h = config['tmp_dir'] + 'clusters/genes_db_h',
+        db_ht = config['tmp_dir'] + 'clusters/genes_db_h.dbtype',
+        db_hi = config['tmp_dir'] + 'clusters/genes_db_h.index',
+        db_clu = expand(config['tmp_dir'] + 'clusters/clusters_db.{X}',
+                        X = range(12)),
+        db_clu_t = config['tmp_dir'] + 'clusters/clusters_db.dbtype',
+        db_clu_i = config['tmp_dir'] + 'clusters/clusters_db.index',
+        db_clu_h = config['tmp_dir'] + 'clusters/clusters_db_h'
+    output:
+        db = temp(config['tmp_dir'] + 'clusters/cluster_reps_db'),
+        db_t = temp(config['tmp_dir'] + 'clusters/cluster_reps_db.dbtype'),
+        db_i = temp(config['tmp_dir'] + 'clusters/cluster_reps_db.index'),
+        db_h = temp(config['tmp_dir'] + 'clusters/cluster_reps_db_h'),
+        tsv = temp(config['tmp_dir'] + 'clusters/cluster_reps.tsv')
+    params:
+        db_clu = config['tmp_dir'] + 'clusters/clusters_db'
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 * 12
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/clusters/mmseqs_membership/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/mmseqs_membership/all.txt'
+    shell:
+        """
+        mmseqs createsubdb {params.db_clu} {input.db} {output.db} 2> {log} 1>&2
+        mmseqs createtsv {input.db} {output.db} {output.tsv} 2>> {log} 1>&2
+        """
+
+rule clusters_nuc_rep_seqs:
+    input:
+        tsv = config['tmp_dir'] + 'clusters/cluster_reps.tsv',
+        fna = config['tmp_dir'] + 'genes/combined.fna'
+    output:
+        fna = config['tmp_dir'] + 'clusters/cluster_reps.fna'
+    params:
+        exe = config['pipeline']['script_folder'] + 'clusters_select_reps.py'
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 * 12
+    log:
+        log_dir + 'cgp/clusters/nuc_rep_seqs/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/nuc_rep_seqs/all.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        {params.exe} {input.tsv} {input.fna} > {output.fna} 2> {log}
+        """
+
+localrules: clusters_blastdb_create
+rule clusters_blastdb_create:
+    """
+    Creating nucleotide blast db from all core gene clusters
+    """
+    input:
+        fna = config['tmp_dir'] + 'clusters/cluster_reps.fna'
+    output:
+        ndb = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.ndb'),
+        nhr = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.nhr'),
+        nin = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.nin'),
+        nt = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.not'),
+        nsq = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.nsq'),
+        ntf = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.ntf'),
+        nto = temp(config['tmp_dir'] + 'clusters_core/combined_nuc_db.nto')
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 3 * 6 + 10
+    conda:
+        '../../envs/blast.yaml'
+    log:
+        log_dir + 'cgp/clusters/blastdb_create/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/clusters/blastdb_create/all.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        PREFIX=`echo "{output.ndb}" | perl -pe 's/\.ndb$//'`
+        makeblastdb -dbtype nucl -in {input.fna} \
+          -out $PREFIX 2> {log} 1>&2
+        """

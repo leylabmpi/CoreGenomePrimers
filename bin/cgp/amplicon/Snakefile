@@ -1,0 +1,79 @@
+localrules: seqkit_amplicon_format
+rule seqkit_amplicon_format:
+    """
+    formatting primers for `seqkit amplicon
+    """
+    input:
+        tsv = cgp_dir + 'primers_final/{t}/cluster_{i}/primers.tsv'
+    output:
+        txt = temp(config['tmp_dir'] + 'amplicon/{t}/cluster_{i}/primers_degen.txt')
+    params:
+        exe = config['pipeline']['script_folder'] +  'primer_info_format.py'
+    log:
+        log_dir + 'cgp/seqkit/amplicon/format/{t}/{i}.log'
+    shell:
+        """
+        {params.exe} {input.tsv} > {output.txt} 2> {log}
+        """
+
+rule seqkit_amplicon:
+    """
+    Running `seqkit amplicon`
+    """
+    input:
+        txt = config['tmp_dir'] + 'amplicon/{t}/cluster_{i}/primers_degen.txt',
+        fasta = config['tmp_dir'] + 'clusters_core/{t}/cluster_{i}.fna'
+    output:
+        bed = temp(config['tmp_dir'] + 'amplicon/{t}/cluster_{i}/amplicons.bed')
+    params:
+        params = config['params']['cgp']['seqkit_amplicon']
+    conda:
+        '../../envs/genes.yaml'
+    log:
+        log_dir + 'cgp/seqkit/amplicon/{t}/{i}.log'        
+    shell:
+        """
+        cat {input.fasta} | \
+          seqkit amplicon {params.params} --bed -p {input.txt} \
+          > {output.bed} 2> {log}
+        """
+
+def aggregate_amplicon_bed(wildcards):
+    """
+    Aggregation function that uses clusters_core checkpoint
+    """
+    chk_out = checkpoints.clusters_core_genes.get(**wildcards).output[0]
+    F = expand(config['tmp_dir'] + 'amplicon/cds/cluster_{x}/amplicons.bed',
+               x = glob_wildcards(os.path.join(chk_out, 'cds', 'cluster_{i}.fna')).i)
+    F += expand(config['tmp_dir'] + 'amplicon/rrna/cluster_{x}/amplicons.bed',
+               x = glob_wildcards(os.path.join(chk_out, 'rrna', 'cluster_{i}.fna')).i)
+    msg = 'No. of amplicon files: {}\n'
+    sys.stderr.write(msg.format(len(F)))
+    return F
+        
+localrules: seqkit_amplicon_merge
+rule seqkit_amplicon_merge:
+    """
+    Merge `seqkit amplicon` results
+    """
+    input:
+        bed = aggregate_amplicon_bed
+    output:
+        tsv = cgp_dir + 'amplicons.tsv'
+    run:
+        import os
+        header = ['gene_type', 'cluster_id', 'gene_id', 'start', 'end',
+                  'primer_set', 'score', 'strand', 'amplicon']
+        with open(output.tsv, 'w') as outF:
+            outF.write('\t'.join(header) + '\n')
+            for F in input.bed:
+                D,filename = os.path.split(F)
+                D,cluster_id = os.path.split(D)
+                D,gene_type = os.path.split(D)
+                cluster_id = cluster_id.split('_')[1]
+                with open(F) as inF:                   
+                    for line in inF:    
+                        line = line.rstrip().split('\t')
+                        line = '\t'.join([gene_type, str(cluster_id)] + line)
+                        outF.write(line + '\n')
+

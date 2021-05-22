@@ -1,0 +1,10 @@
+import os
+
+taxid_dir = os.path.join(config['output_dir'], 'taxids/')
+pdp_dir = os.path.join(config['output_dir'], 'pdp/')
+cgp_dir = os.path.join(config['output_dir'], 'cgp/')
+
+log_dir = os.path.join(config['output_dir'], 'logs/')
+benchmark_dir = os.path.join(config['output_dir'], 'benchmarks/')
+scripts_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'scripts/')
+

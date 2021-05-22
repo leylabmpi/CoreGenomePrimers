@@ -1,0 +1,37 @@
+localrules: taxids_write_target
+rule taxids_write_target:
+    """
+    Getting all descendent taxids from list provided in the input table
+    """
+    output:
+        taxids = taxid_dir + 'target_user-provided_taxids.txt'
+    params:
+        taxids = config['taxids']
+    run:
+        with open(output.taxids, 'w') as outF:
+            for taxid in params.taxids:
+                outF.write(str(taxid) + '\n')        
+        
+
+localrules: taxids_get_species_level
+rule taxids_get_species_level:
+    """
+    Getting all species-level taxids from user-provided list of taxids (any taxonomic level)
+    """
+    input:
+        taxids = taxid_dir + 'target_user-provided_taxids.txt'
+    output:
+        taxids = taxid_dir + 'target_species-level_taxids.txt'
+    params:
+        exe = config['pipeline']['script_folder'] + 'get_species_taxids.py'
+    conda:
+        '../envs/blast.yaml'
+    log:
+        log_dir + 'taxids_get_species_level/all.log'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        > {log}
+        {params.exe} {input.taxids} 2>> {log} | \
+          sort -n > {output.taxids} 2>> {log}
+        """

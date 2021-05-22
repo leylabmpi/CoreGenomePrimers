@@ -1,0 +1,4 @@
+Taxon	Groups	Taxid	Fasta	Filters	Domain
+Pba_SCRI1043	Pectobacterium,atrosepticum_NCBI,gv1	122277	tests/data/genomes/GCF_000011605.1.fasta	Pectobacterium	Bacteria
+Pwa_CFBP_3304	Pectobacterium,wasabiae_NCBI,gv2	122277	tests/data/genomes/GCF_000291725.1.fasta	Pectobacterium	Bacteria
+Pbe_NCPPB_2795	Pectobacterium,betavasculorum_NCBI,gv7	122277	tests/data/genomes/GCF_000749845.1.fasta	Pectobacterium	Bacteria

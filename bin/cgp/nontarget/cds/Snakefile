@@ -1,0 +1,99 @@
+def aggregate_cluster_cds_fasta(wildcards):
+    """
+    Selecting cluster fasta files
+    """
+    chk_out = checkpoints.clusters_core_genes.get(**wildcards).output[0]
+    F = expand(os.path.join(chk_out, 'cds', 'cluster_{x}.fna'),
+               x = glob_wildcards(os.path.join(chk_out, 'cds', 'cluster_{i}.fna')).i)
+    msg = 'No. of cds cluster fasta files: {}\n'
+    sys.stderr.write(msg.format(len(F)))    
+    return F
+
+localrules: clusters_cds_concat_reps_fasta
+rule clusters_cds_concat_reps_fasta:
+    """
+    Concatenating cluster fasta files
+    """
+    input:
+        fna = aggregate_cluster_cds_fasta
+    output:
+        fna = config['tmp_dir'] + 'blastx/core_cluster_reps.fna'
+    run:
+        import os
+        with open(output.fna, 'w') as outF:
+            for F in input.fna:
+                cluster_id = os.path.splitext(os.path.split(F)[1])[0]
+                cnt = 0
+                with open(F) as inF:
+                    for line in inF:
+                        if line.startswith('>'):
+                            line = line.rstrip() + '_{}\n'.format(cluster_id)
+                            cnt += 1
+                        if cnt > 1:
+                            break
+                        outF.write(line)
+
+if str(config['params']['cgp']['blast_nontarget']['run_locally']).lower() == 'true':
+    localrules: clusters_reps_blastx_nontarget
+rule clusters_reps_blastx_nontarget:
+    """
+    blastx of cluster reps vs non-target clades
+    """
+    input:
+        fna = config['tmp_dir'] + 'blastx/core_cluster_reps.fna',
+        taxids = taxid_dir + 'target_species-level_taxids.txt'
+    output:
+        txt = temp(config['tmp_dir'] + 'blastx_nontarget/hits.txt')
+    params:
+        params = config['params']['cgp']['blast_nontarget']['cds'],
+        db = config['databases']['blast']['prot']
+    conda:
+        '../../../envs/blast.yaml'
+    threads:
+        12
+    resources:
+        time = lambda wildcards, attempt: attempt * 60 * 24 + (60 * 36),
+        n = lambda wildcards, attempt, threads: threads,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 2 + 18
+    log:
+        log_dir + 'cgp/annotate/blastx_nontarget/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/annotate/blastx_nontarget/all.txt'
+    shell:
+        """
+        OUTFMT="6 qaccver saccver pident length mismatch"
+        OUTFMT="$OUTFMT qstart qend sstart send evalue slen qlen"
+        OUTFMT="$OUTFMT sscinames staxids"
+        blastx {params.params} \
+          -num_threads {threads} \
+          -negative_taxidlist {input.taxids} \
+          -outfmt "$OUTFMT" \
+          -db {params.db} \
+          -query {input.fna} \
+          -out {output.txt} \
+          2> {log} 1>&2
+        """
+
+rule clusters_blastx_nontarget_format:
+    """
+    Formatting blastx results
+    """
+    input:
+        txt = config['tmp_dir'] + 'blastx_nontarget/hits.txt',
+        idx = ancient(config['databases']['blast']['gene_names'])
+    output:
+        tsv = cgp_dir + 'nontarget/cds_blastx.tsv'
+    params:
+        exe = config['pipeline']['script_folder'] + 'clusters_blastx_format.py'
+    resources:
+        time = lambda wildcards, attempt: attempt ** 3 * 59,
+        mem_gb_pt = lambda wildcards, attempt: attempt ** 2 * 20 + 30
+    log:
+        log_dir + 'cgp/annotate/blastx_nontarget_format/all.log'
+    benchmark:
+        benchmark_dir + 'cgp/annotate/blastx_nontarget_format/all.txt'
+    shell:
+        """
+        export PATH=$CONDA_PREFIX/bin:$PATH
+        {params.exe} {input.txt} {input.idx} {output.tsv} 2> {log} 1>&2
+        """

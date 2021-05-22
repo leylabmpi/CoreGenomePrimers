@@ -1,0 +1,11 @@
+channels:
+- bioconda
+dependencies:
+- pigz
+- python=3
+- numpy
+- pyfaidx
+- bioconda::seqkit
+- bioconda::fasta-splitter
+- bioconda::vsearch
+- bioconda::mmseqs2
