@@ -79,7 +79,7 @@ Rule graph:
 ## Snakemake
 
 The pipeline utilizes [snakemake](https://snakemake.readthedocs.io/en/stable/).
-We recommend that you install it via [conda](https://docs.conda.io/en/latest/miniconda.html).
+We recommend that you install it via [conda](https://docs.conda.io/en/latest/miniconda.html) or mamba.
 
 ## Pipeline
 
@@ -87,10 +87,21 @@ We recommend that you install it via [conda](https://docs.conda.io/en/latest/min
 git clone --recurse-submodules git@github.com:leylabmpi/CoreGenomePrimers.git
 ```
 
-That's it! Snakemake will install all dependencies!
+## Databases
 
+### BLAST (nucl & prot)
 
-# Instructions
+Use `update_blastdb.pl` or another method 
+
+### BLAST (rRNA)
+
+See the [NCBI rRNA databases](https://ncbiinsights.ncbi.nlm.nih.gov/2020/02/21/rrna-databases/)
+
+### Taxonomy
+
+See [taxonkit](https://bioinf.shenwei.me/taxonkit/)
+
+# Usage instructions
 
 For general instuctions on using snakemake, see the [snakemake docs](https://snakemake.readthedocs.io/en/stable/).
 
