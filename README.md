@@ -97,9 +97,21 @@ Use `update_blastdb.pl` or another method
 
 See the [NCBI rRNA databases](https://ncbiinsights.ncbi.nlm.nih.gov/2020/02/21/rrna-databases/)
 
+You can also download the `SSU` and `LSU` databases from ftp:/ftp/ebio/projects/CoreGenomePrimers/
+
+### Gene names
+
+You can download the gene names pkl file from ftp:/ftp/ebio/projects/CoreGenomePrimers/
+
 ### Taxonomy
 
 See [taxonkit](https://bioinf.shenwei.me/taxonkit/)
+
+You can also download the taxonomy files from ftp:/ftp/ebio/projects/CoreGenomePrimers/
+
+### Notes
+
+Make sure to update the file paths to the databases in the `config.yaml`
 
 # Usage instructions
 

@@ -58,4 +58,4 @@ databases:
 pipeline:
   snakemake_folder: ./
   script_folder: bin/scripts/
-  name: LLPRIMER
+  name: CoreGenomePrimers
