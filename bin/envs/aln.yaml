@@ -3,6 +3,6 @@ channels:
 - conda-forge
 dependencies:
 - pigz
-- bioconda::revtrans
-- bioconda::kalign3
-- bioconda::mafft
+- bioconda::revtrans=1.4
+- bioconda::kalign3=3.3.2
+- bioconda::mafft=7.508

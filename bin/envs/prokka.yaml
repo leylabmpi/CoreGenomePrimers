@@ -2,4 +2,4 @@ channels:
 - bioconda
 dependencies:
 - pigz
-- bioconda::prokka
+- bioconda::prokka=1.14.6

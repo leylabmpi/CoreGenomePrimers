@@ -45,9 +45,9 @@ else:
 
 ## temp directory
 config['pipeline']['username'] = getpass.getuser()
-config['pipeline']['email'] = config['pipeline']['username'] + '@tuebingen.mpg.de'
+config['pipeline']['email'] = config['email']
 config['tmp_dir'] = os.path.join(config['tmp_dir'], config['pipeline']['username'])
-config['tmp_dir'] = os.path.join(config['tmp_dir'], 'LLPRIMER_' + str(os.stat('.').st_ino) + '/')
+config['tmp_dir'] = os.path.join(config['tmp_dir'], 'CoreGenomePrimers_' + str(os.stat('.').st_ino) + '/')
 print('\33[33mUsing temporary directory: {} \x1b[0m'.format(config['tmp_dir']))
 print('\33[33mUsing output directory: {} \x1b[0m'.format(config['output_dir']))
 if not os.path.isdir(config['tmp_dir']):

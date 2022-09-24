@@ -4,8 +4,8 @@ dependencies:
 - pigz
 - python=3
 - numpy
-- pyfaidx
-- bioconda::seqkit
-- bioconda::fasta-splitter
-- bioconda::vsearch
-- bioconda::mmseqs2
+- pyfaidx=0.7.0
+- bioconda::seqkit=2.3.1
+- bioconda::fasta-splitter=0.2.6
+- bioconda::vsearch=2.21.2
+- bioconda::mmseqs2=13.45111

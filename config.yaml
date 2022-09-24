@@ -7,6 +7,9 @@ output_dir: tests/output_pecto/
 # temporary file directory (your username will be added automatically)
 tmp_dir: /ebio/abt3_scratch/
 
+# provide email to get notifications
+email: Skip
+
 #-- software parameters --#
 # See the README for a description
 params:

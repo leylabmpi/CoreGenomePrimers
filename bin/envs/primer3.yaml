@@ -3,5 +3,6 @@ channels:
 - conda-forge
 dependencies:
 - pigz
+- python=3.6
 - bioconda::biopython<1.78
-- bioconda::primer3-py
+- bioconda::primer3-py=0.6.1

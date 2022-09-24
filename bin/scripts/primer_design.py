@@ -12,6 +12,10 @@ import itertools
 import collections
 from pprint import pprint
 from subprocess import Popen, PIPE
+try:
+    from functools import reduce
+except ImportError:
+    pass
 # 3rd party
 from Bio.Seq import Seq
 from Bio import motifs
