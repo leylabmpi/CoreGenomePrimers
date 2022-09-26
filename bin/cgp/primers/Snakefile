@@ -78,6 +78,7 @@ rule primers_blastn_crosshyb:
           -query {input.fna} \
           -out {output.txt} \
           2> {log} 1>&2
+        touch {output.txt} 2>> {log} 1>&2
         """        
 
 rule primers_blastn_crosshyb_filter:
@@ -156,6 +157,7 @@ rule primers_blastn_other_taxa:
           -query {input.fna} \
           -out {output.txt} \
           2> {log} 1>&2
+        touch {output.txt} 2>> {log} 1>&2
         """        
                 
 rule primers_blastn_other_taxa_filter:

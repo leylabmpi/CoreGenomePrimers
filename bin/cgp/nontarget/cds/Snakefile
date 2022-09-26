@@ -96,4 +96,5 @@ rule clusters_blastx_nontarget_format:
         """
         export PATH=$CONDA_PREFIX/bin:$PATH
         {params.exe} {input.txt} {input.idx} {output.tsv} 2> {log} 1>&2
+        touch {output.tsv} 2>> {log} 1>&2
         """
