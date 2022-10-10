@@ -431,6 +431,12 @@ def filter_incomplete_primer_sets(primers, seq_cats):
     logging.info(msg.format(len(primers.keys())))
     return primers
 
+def get_len(x):
+    try:
+        return len(x)
+    except TypeError:
+        return 0
+
 def calc_degen(primers, aln, degen_max, degen_3prime_max, window_3prime=5,
                internal_oligo=0):
     """
@@ -479,8 +485,8 @@ def calc_degen(primers, aln, degen_max, degen_3prime_max, window_3prime=5,
             stats = {
                 'length' : len(degen_seq),
                 'expanded' : expand_seq,
-                'degeneracy' : len(expand_seq),
-                'degeneracy_3p' : len(degen_3p),
+                'degeneracy' : get_len(expand_seq),
+                'degeneracy_3p' : get_len(degen_3p),
                 'start' : start,
                 'end' : end,
                 'amplicon_size_consensus' : primers[num]['PRIMER_PAIR']['PRODUCT_SIZE']
